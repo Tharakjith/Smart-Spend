@@ -38,6 +38,25 @@ when ready.
 | `DEMO_MODE=true` | Seed the labelled demo household (`demo@example.com` / `DemoPassw0rd!`) |
 | `DEV_RELOAD=false` | Turn off auto-reload (it is on by default) |
 | `REQUIRE_EMAIL_VERIFICATION` | Defaults to `false` under `dev.py`. Verification links are printed to the API log when SMTP is not set |
+| `RATE_LIMIT_AUTH_PER_MINUTE` | `120` under `dev.py` so the browser tests can sign up many accounts (the normal default is 10) |
+
+### Sending real email (password-reset codes, verification)
+
+Without SMTP, nothing leaves the machine: emails are written to the API log, and in development the
+"Forgot password" page shows the reset code on screen. To deliver real emails, create `backend/.env`
+(or `.env` in the repo root) with your provider's SMTP settings. For Gmail, turn on 2-Step Verification and
+create an *app password* (Google Account → Security → App passwords); your normal Gmail password won't work.
+
+```ini
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=abcdefghijklmnop   # the 16-character app password, no spaces
+SMTP_FROM=SmartSpend <you@gmail.com>
+```
+
+Port 587 uses STARTTLS and port 465 uses implicit TLS. Restart the API after editing `.env` (settings are read at
+startup). If sending fails, the request still succeeds and the API log records the SMTP error.
 
 In development, background jobs (OCR, extraction) run inline (`CELERY_TASK_ALWAYS_EAGER=true`), so Redis isn't
 needed. To run a real worker: start Redis, set `CELERY_TASK_ALWAYS_EAGER=false`, and run

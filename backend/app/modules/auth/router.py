@@ -4,14 +4,14 @@ from datetime import timedelta
 
 import pyotp
 from fastapi import APIRouter, Cookie, Depends, Header, Request, Response
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, model_validator
 from sqlalchemy import func, select
 
 from app.core.config import get_settings
 from app.core.db import get_db, utcnow
 from app.core.deps import AuthUser, get_auth_user
-from app.core.email import send_email
-from app.core.errors import AppError, Forbidden, Unauthorized, ValidationFailed
+from app.core.email import OUTBOX, dev_mailbox_enabled, send_email
+from app.core.errors import AppError, Forbidden, NotFound, Unauthorized, ValidationFailed
 from app.core.ratelimit import auth_rate_limit
 from app.core.security import (
     DUMMY_HASH,
@@ -63,8 +63,22 @@ class EmailIn(Schema):
 
 
 class ResetIn(Schema):
-    token: str
+    """Either the emailed link's token, or the email address plus the 6-digit code from the same email."""
+
+    token: str | None = None
+    email: EmailStr | None = None
+    code: str | None = Field(default=None, pattern=r"^\d{6}$")
     new_password: str = Field(min_length=10, max_length=200)
+
+    @model_validator(mode="after")
+    def _one_method(self):
+        if not self.token and not (self.email and self.code):
+            raise ValueError("Provide the 6-digit code with your email address, or use the link from the email")
+        return self
+
+
+RESET_CODE_MINUTES = 15
+MAX_CODE_ATTEMPTS = 5
 
 
 class CodeIn(Schema):
@@ -159,7 +173,10 @@ def register(body: RegisterIn, db=Depends(get_db)):
         user.email_verified_at = utcnow()
     db.add(user)
     db.flush()
-    create_household(db, user, body.household_name or f"{user.full_name.split()[0]}'s Household", body.base_currency)
+    # A blank workspace name defaults to "<first name>'s Workspace"; it can be renamed later in Settings.
+    first = user.full_name.split()
+    default = f"{first[0]}'s Workspace" if first else "My Workspace"
+    create_household(db, user, (body.household_name or "").strip() or default, body.base_currency)
     if user.email_verified_at is None:
         _send_verification(db, user)
     db.add(AuditLog(actor_id=user.id, action="register", entity_type="user", entity_id=str(user.id)))
@@ -271,11 +288,63 @@ def resend_verification(body: EmailIn, db=Depends(get_db)):
 def forgot_password(body: EmailIn, db=Depends(get_db)):
     user = db.scalars(select(User).where(func.lower(User.email) == body.email.lower())).first()
     if user and user.is_active:
+        # Earlier codes stop working: only the newest email counts.
+        for old in db.scalars(select(EmailToken).where(EmailToken.user_id == user.id, EmailToken.purpose == "reset_code", EmailToken.used_at.is_(None))):
+            old.used_at = utcnow()
+        code = f"{secrets.randbelow(10**6):06d}"
+        # The hash binds the code to this token's id, so equal codes in different requests never collide
+        # on the unique token_hash column.
+        tok_id = uuid.uuid4()
+        db.add(EmailToken(id=tok_id, user_id=user.id, purpose="reset_code", token_hash=_code_hash(user.id, tok_id, code), expires_at=utcnow() + timedelta(minutes=RESET_CODE_MINUTES)))
         raw = _issue_email_token(db, user, "reset_password", timedelta(hours=1))
         url = f"{get_settings().frontend_url}/reset-password?token={raw}"
-        send_email(user.email, "Reset your SmartSpend password", f"Reset your password: {url}\n\nThis link expires in 1 hour. If you did not request it, ignore this email.")
+        send_email(
+            user.email,
+            f"{code} is your SmartSpend password reset code",
+            f"Your SmartSpend password reset code is: {code}\n\n"
+            f"Enter it on the 'Reset your password' page. It expires in {RESET_CODE_MINUTES} minutes.\n\n"
+            f"Or open this link (valid for 1 hour): {url}\n\n"
+            "If you didn't ask to reset your password, ignore this email - your password stays the same.",
+        )
         db.commit()
-    return {"ok": True}  # identical response whether or not the email exists
+    delivery = "email" if get_settings().smtp_host else ("dev_mailbox" if dev_mailbox_enabled() else "not_configured")
+    return {"ok": True, "delivery": delivery}  # identical whether or not the email exists
+
+
+@router.get("/dev-mailbox")
+def dev_mailbox(email: EmailStr):
+    """Local development only, while SMTP is not configured: the emails that would have been sent."""
+    if not dev_mailbox_enabled():
+        raise NotFound("Not found")
+    return {"items": [m for m in reversed(OUTBOX) if m["to"].lower() == email.lower()][:5]}
+
+
+def _code_hash(user_id, token_id, code: str) -> str:
+    return token_hash(f"reset:{user_id}:{token_id}:{code}")
+
+
+def _check_reset_code(db, email: str, code: str) -> User:
+    invalid = ValidationFailed("That code is incorrect or has expired. Request a new one.", code="code_invalid")
+    user = db.scalars(select(User).where(func.lower(User.email) == email.lower())).first()
+    if user is None:
+        raise invalid
+    tok = db.scalars(
+        select(EmailToken)
+        .where(EmailToken.user_id == user.id, EmailToken.purpose == "reset_code", EmailToken.used_at.is_(None))
+        .order_by(EmailToken.created_at.desc())
+        .with_for_update()
+    ).first()
+    if tok is None or tok.expires_at < utcnow() or tok.attempts >= MAX_CODE_ATTEMPTS:
+        raise invalid
+    if not secrets.compare_digest(tok.token_hash, _code_hash(user.id, tok.id, code)):
+        tok.attempts += 1
+        left = MAX_CODE_ATTEMPTS - tok.attempts
+        db.commit()
+        if left <= 0:
+            raise invalid
+        raise ValidationFailed(f"That code is incorrect. {left} attempt(s) left.", code="code_incorrect")
+    tok.used_at = utcnow()
+    return user
 
 
 @router.post("/reset-password", dependencies=[Depends(auth_rate_limit)])
@@ -283,8 +352,14 @@ def reset_password(body: ResetIn, db=Depends(get_db)):
     problems = validate_password_strength(body.new_password)
     if problems:
         raise ValidationFailed("Password must contain " + ", ".join(problems), code="weak_password")
-    tok = _consume_email_token(db, body.token, "reset_password")
-    user = db.get(User, tok.user_id)
+    if body.token:
+        tok = _consume_email_token(db, body.token, "reset_password")
+        user = db.get(User, tok.user_id)
+    else:
+        user = _check_reset_code(db, body.email, body.code)
+    # Whichever way was used, every other outstanding reset link or code is now spent.
+    for other in db.scalars(select(EmailToken).where(EmailToken.user_id == user.id, EmailToken.purpose.in_(("reset_password", "reset_code")), EmailToken.used_at.is_(None))):
+        other.used_at = utcnow()
     user.password_hash = hash_password(body.new_password)
     user.failed_login_count = 0
     user.locked_until = None

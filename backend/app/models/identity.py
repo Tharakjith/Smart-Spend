@@ -44,11 +44,13 @@ class UserSession(IdMixin, Base):
 class EmailToken(IdMixin, Base):
     __tablename__ = "email_tokens"
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
-    purpose: Mapped[str] = mapped_column(String(32), nullable=False)  # verify_email | reset_password | mfa_login
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)  # verify_email | reset_password | reset_code | mfa_login
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    # Wrong guesses of a short code (reset_code); the code stops working after MAX_CODE_ATTEMPTS.
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
 
 
 class Household(IdMixin, TimestampMixin, Base):

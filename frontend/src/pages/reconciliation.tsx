@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, CheckCircle2, CircleSlash, Link2, Minus, Plus, RefreshCw, RotateCcw, Split, Unlink, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleSlash, Link2, Minus, Plus, RefreshCw, RotateCcw, Split, Unlink } from "lucide-react";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -160,11 +160,14 @@ export function MatchCard({ m, selectable, selected, onSelect }: { m: Match; sel
               <Button size="sm" onClick={() => setConfirming(true)}>
                 <CheckCircle2 /> {m.kind === "bill_payment" ? "Link payment to bill" : m.kind === "duplicate" ? "Same transaction — merge" : "Link refund"}
               </Button>
-              <Button size="sm" variant="outline" loading={act.isPending} onClick={() => act.mutate({ path: `/reconciliation/${m.id}/reject`, body: { separate_purchases: true } })}>
-                <CircleSlash /> Separate purchases
-              </Button>
-              <Button size="sm" variant="ghost" loading={act.isPending} onClick={() => act.mutate({ path: `/reconciliation/${m.id}/reject`, body: { note: "Not a match" } })}>
-                <XCircle /> Reject
+              <Button
+                size="sm"
+                variant="outline"
+                loading={act.isPending}
+                title="These are different purchases: keep both, and don't suggest this pair again"
+                onClick={() => act.mutate({ path: `/reconciliation/${m.id}/reject`, body: { separate_purchases: true } })}
+              >
+                <CircleSlash /> Not a match — keep separate
               </Button>
             </>
           )}
@@ -442,7 +445,7 @@ export function ReconciliationPage() {
           )
         }
       />
-      <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Reconciliation summary">
+      <section className="stagger mb-6 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5" aria-label="Reconciliation summary">
         {!s ? (
           Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24" />)
         ) : (

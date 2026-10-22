@@ -15,7 +15,11 @@ configure.
 - **CSRF:** cookie-authenticated endpoints (`/auth/refresh`, `/auth/logout`) require a double-submit
   `X-CSRF-Token`. All other API calls use the bearer token, which browsers never attach automatically.
 - **Email verification and password reset** use single-use, hashed, expiring tokens (48 h and 1 h). A reset
-  revokes every session.
+  revokes every session. The reset email also carries a 6-digit code: stored only as a hash bound to its token
+  row, valid 15 minutes, dead after 5 wrong guesses, and replaced by any newer request. Using the code or the
+  link spends both. Unknown addresses get the same response and the same "invalid code" error. The
+  `/auth/dev-mailbox` endpoint that shows codes on screen exists only when `ENVIRONMENT=development` and SMTP is
+  not configured.
 - **MFA:** optional TOTP. Secrets are encrypted at rest with Fernet (`ENCRYPTION_KEY`).
 
 ## Authorization and isolation

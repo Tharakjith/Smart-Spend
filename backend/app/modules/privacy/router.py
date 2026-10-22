@@ -105,7 +105,7 @@ def delete_account(body: DeleteIn, auth: AuthUser = Depends(get_auth_user)):
                     select(func.count()).select_from(HouseholdMember).where(HouseholdMember.household_id == m.household_id, HouseholdMember.user_id != user.id, HouseholdMember.role == "owner")
                 )
                 if not other_owners:
-                    raise Conflict("Transfer ownership of shared households before deleting your account", code="last_owner")
+                    raise Conflict("Make someone else an owner of your shared workspaces before deleting your account", code="last_owner")
         storage = get_storage()
         for hid in to_delete:
             for d in db.scalars(select(Document).where(Document.household_id == hid)).all():

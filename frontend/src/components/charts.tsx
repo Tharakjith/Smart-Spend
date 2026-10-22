@@ -97,7 +97,7 @@ export function BarList({ items, currency, empty = "No data for this period", ma
             <span className="shrink-0 font-medium tabular">{money(i.amount, currency)}</span>
           </div>
           <div className="h-2 rounded-full bg-muted">
-            <div className="h-2 rounded-full bg-[var(--chart-1)] transition-opacity group-hover:opacity-80" style={{ width: `${Math.max(2, (Math.abs(chartNum(i.amount)) / top) * 100)}%` }} />
+            <div className="animate-grow h-2 rounded-full bg-[var(--chart-1)] transition-[opacity,width] duration-500 group-hover:opacity-80" style={{ width: `${Math.max(2, (Math.abs(chartNum(i.amount)) / top) * 100)}%` }} />
           </div>
           {i.sub && <span className="text-xs text-muted-foreground">{i.sub}</span>}
         </li>

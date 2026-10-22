@@ -109,3 +109,93 @@
     outline-offset: 2px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Motion. Short, purposeful animations: things enter from where they come
+   from, and nothing moves for people who ask their system for reduced motion.
+   --------------------------------------------------------------------------- */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes fade-out { from { opacity: 1 } to { opacity: 0 } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+@keyframes zoom-in { from { opacity: 0; transform: translate(-50%, -48%) scale(0.96) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
+@keyframes zoom-out { from { opacity: 1; transform: translate(-50%, -50%) scale(1) } to { opacity: 0; transform: translate(-50%, -48%) scale(0.96) } }
+@keyframes sheet-up { from { transform: translateY(100%) } to { transform: none } }
+@keyframes sheet-down { from { transform: none } to { transform: translateY(100%) } }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.95) } to { opacity: 1; transform: scale(1) } }
+@keyframes pop-out { from { opacity: 1; transform: scale(1) } to { opacity: 0; transform: scale(0.95) } }
+@keyframes badge-pop { 0% { transform: scale(0) } 60% { transform: scale(1.25) } 100% { transform: scale(1) } }
+@keyframes bell-ring {
+  0%, 100% { transform: rotate(0) }
+  15% { transform: rotate(14deg) }
+  30% { transform: rotate(-12deg) }
+  45% { transform: rotate(8deg) }
+  60% { transform: rotate(-5deg) }
+  75% { transform: rotate(2deg) }
+}
+@keyframes grow-x { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+@keyframes shimmer { from { background-position: 150% 0 } to { background-position: -50% 0 } }
+
+@layer components {
+  /* A page (or tab panel) arriving. */
+  .animate-page { animation: fade-up 0.32s var(--ease-out) backwards; }
+  .animate-fade { animation: fade-in 0.25s var(--ease-out) backwards; }
+
+  /* Children arrive one after another. */
+  .stagger > * { animation: fade-up 0.4s var(--ease-out) backwards; }
+  .stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .stagger > *:nth-child(7) { animation-delay: 240ms; }
+  .stagger > *:nth-child(8) { animation-delay: 280ms; }
+  .stagger > *:nth-child(n + 9) { animation-delay: 320ms; }
+
+  /* Bars grow from their baseline. */
+  .animate-grow { transform-origin: left center; animation: grow-x 0.7s var(--ease-out) backwards; }
+
+  /* Radix overlays and centred dialogs. */
+  .overlay-motion[data-state="open"] { animation: fade-in 0.2s var(--ease-out); }
+  .overlay-motion[data-state="closed"] { animation: fade-out 0.15s var(--ease-in); }
+  .dialog-motion[data-state="open"] { animation: zoom-in 0.22s var(--ease-out); }
+  .dialog-motion[data-state="closed"] { animation: zoom-out 0.15s var(--ease-in); }
+  /* On phones dialogs are bottom sheets that slide up. */
+  @media (max-width: 639.98px) {
+    .dialog-motion.sheet-on-mobile[data-state="open"] { animation: sheet-up 0.3s var(--ease-out); }
+    .dialog-motion.sheet-on-mobile[data-state="closed"] { animation: sheet-down 0.2s var(--ease-in); }
+  }
+  /* Popovers grow out of the thing that opened them. */
+  .popover-motion { transform-origin: var(--radix-popover-content-transform-origin); }
+  .popover-motion[data-state="open"] { animation: pop-in 0.16s var(--ease-out); }
+  .popover-motion[data-state="closed"] { animation: pop-out 0.12s var(--ease-in); }
+
+  .animate-badge { animation: badge-pop 0.35s var(--ease-out); }
+  .animate-ring { transform-origin: 50% 10%; animation: bell-ring 0.9s var(--ease-out); }
+
+  /* Loading placeholders sweep instead of blinking. */
+  .shimmer {
+    background: linear-gradient(90deg, var(--muted) 30%, color-mix(in oklab, var(--muted), var(--card) 60%) 50%, var(--muted) 70%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+
+  /* Cards that are links or buttons lift slightly. */
+  .lift { transition: transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), border-color 0.2s; }
+  .lift:hover { transform: translateY(-2px); box-shadow: 0 6px 20px -8px rgb(15 23 42 / 0.18); }
+  .lift:active { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

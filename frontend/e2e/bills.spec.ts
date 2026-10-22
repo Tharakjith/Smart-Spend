@@ -163,6 +163,7 @@ test("credit card bill: add card and bill, pay minimum then the rest, spending c
   // A purchase on the card.
   await page.goto("/transactions");
   await page.getByRole("button", { name: "Add transaction" }).first().click();
+  await page.getByRole("button", { name: /Enter manually/ }).click();
   const tx = page.getByRole("dialog");
   await tx.getByLabel("Amount").fill("3000");
   await tx.getByLabel("Merchant / payee").fill("Croma");

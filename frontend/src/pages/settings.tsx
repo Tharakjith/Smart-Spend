@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, CheckCheck, Download, KeyRound, LogOut, RefreshCw, ShieldCheck, Trash2, UserPlus } from "lucide-react";
+import { Bell, CheckCheck, Download, KeyRound, LogOut, Plus, RefreshCw, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, PageHeader, Select, Skeleton, Switch } from "@/components/ui/primitives";
@@ -179,12 +180,21 @@ function Security() {
   );
 }
 
-function HouseholdSettings() {
+const ROLE_HELP: Record<string, string> = {
+  owner: "Full control, including sharing and deleting",
+  admin: "Manages people and settings",
+  member: "Adds and edits transactions and bills",
+  viewer: "Can look, can't change anything",
+};
+
+function WorkspaceSettings() {
   const qc = useQueryClient();
   const { household, isAdmin, me, reload, switchHousehold } = useAuth();
   const [name, setName] = React.useState(household?.name ?? "");
   const [invite, setInvite] = React.useState({ email: "", role: "member" });
   const [newName, setNewName] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
+  React.useEffect(() => setName(household?.name ?? ""), [household?.id, household?.name]);
   const detail = useQuery({ queryKey: ["household", household?.id], queryFn: () => api<any>(`/households/${household!.id}`), enabled: !!household });
   const members = useQuery({ queryKey: ["members", household?.id], queryFn: () => api<any[]>(`/households/${household!.id}/members`), enabled: !!household });
   const patch = useMutation({
@@ -201,52 +211,65 @@ function HouseholdSettings() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["members"] });
       setInvite({ email: "", role: "member" });
-      toast.success("Member added");
+      toast.success("Access granted");
     },
     onError: err,
   });
   const role = useMutation({ mutationFn: ({ uid, r }: { uid: string; r: string }) => api(`/households/${household!.id}/members/${uid}`, { method: "PATCH", body: { role: r } }), onSuccess: () => qc.invalidateQueries({ queryKey: ["members"] }), onError: err });
   const remove = useMutation({ mutationFn: (uid: string) => api(`/households/${household!.id}/members/${uid}`, { method: "DELETE" }), onSuccess: () => qc.invalidateQueries({ queryKey: ["members"] }), onError: err });
   const create = useMutation({
-    mutationFn: () => api("/households", { body: { name: newName, base_currency: household?.base_currency ?? "INR" } }),
+    mutationFn: () => api("/households", { body: { name: newName.trim(), base_currency: household?.base_currency ?? "INR" } }),
     onSuccess: async (h: any) => {
       await reload();
       switchHousehold(h.id);
-      toast.success("Household created");
+      setNewName("");
+      setCreating(false);
+      toast.success(`Switched to "${h.name}"`);
     },
     onError: err,
   });
   const cfg = detail.data?.matching_config ?? {};
+  const people = members.data ?? [];
+  const solo = people.length <= 1;
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>Household</CardTitle>
-          <CardDescription>
-            Base currency {household?.base_currency} · timezone {household?.timezone}
-          </CardDescription>
+          <CardTitle>Workspace</CardTitle>
+          <CardDescription>Everything you track (transactions, bills, accounts, budgets) lives in this workspace.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3">
-          <Field label="Name" htmlFor="h-name">
-            <Input id="h-name" value={name} disabled={!isAdmin} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          {isAdmin && (
-            <Button className="w-fit" variant="outline" onClick={() => patch.mutate({ name })}>
-              Save name
-            </Button>
-          )}
-          <div className="mt-2 grid gap-2 rounded-md border p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">AI-assisted suggestions</p>
-                <p className="text-xs text-muted-foreground">Off by default. When enabled and configured by the server administrator, document text may be sent to the configured AI provider for suggestions only. Matching and totals never depend on AI.</p>
-              </div>
-              <Switch checked={!!detail.data?.ai_opt_in} disabled={!isAdmin} onCheckedChange={(v) => patch.mutate({ ai_opt_in: v })} aria-label="AI-assisted suggestions" />
+        <CardContent className="grid gap-4">
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              patch.mutate({ name: name.trim() });
+            }}
+          >
+            <div className="flex-1">
+              <Field label="Name" htmlFor="h-name">
+                <Input id="h-name" value={name} disabled={!isAdmin} onChange={(e) => setName(e.target.value)} />
+              </Field>
             </div>
-          </div>
+            {isAdmin && (
+              <Button type="submit" variant="outline" disabled={!name.trim() || name.trim() === household?.name}>
+                Save
+              </Button>
+            )}
+          </form>
+          <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/60 p-3 text-sm">
+            <div>
+              <dt className="text-xs text-muted-foreground">Currency</dt>
+              <dd className="font-medium">{household?.base_currency}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Time zone</dt>
+              <dd className="font-medium">{household?.timezone}</dd>
+            </div>
+          </dl>
           <div className="grid gap-2 rounded-md border p-3">
             <p className="text-sm font-medium">Matching window</p>
-            <p className="text-xs text-muted-foreground">How many days apart a bill and payment may be and still be suggested as a match.</p>
+            <p className="text-xs text-muted-foreground">How many days apart a bill and its payment can be and still be suggested as a match.</p>
             <Select aria-label="Matching window" className="w-40" disabled={!isAdmin} value={String(cfg.date_window_days ?? 3)} onChange={(e) => patch.mutate({ matching_config: { ...cfg, date_window_days: Number(e.target.value) } })}>
               {[1, 2, 3, 5, 7, 10].map((d) => (
                 <option key={d} value={d}>
@@ -255,69 +278,134 @@ function HouseholdSettings() {
               ))}
             </Select>
           </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Members</CardTitle>
-          <CardDescription>Owners and admins manage members; members can add and edit; viewers can only read.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          <ul className="divide-y text-sm">
-            {(members.data ?? []).map((m) => (
-              <li key={m.user_id} className="flex flex-wrap items-center gap-2 py-2">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">
-                    {m.full_name} {m.user_id === me?.user.id && <span className="text-muted-foreground">(you)</span>}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">{m.email}</p>
-                </div>
-                {isAdmin ? (
-                  <Select aria-label={`Role for ${m.email}`} className="w-28" value={m.role} onChange={(e) => role.mutate({ uid: m.user_id, r: e.target.value })}>
-                    {["owner", "admin", "member", "viewer"].map((r) => (
-                      <option key={r} value={r}>
-                        {label(r)}
-                      </option>
-                    ))}
-                  </Select>
-                ) : (
-                  <Badge>{m.role}</Badge>
-                )}
-                {(isAdmin || m.user_id === me?.user.id) && (
-                  <Button size="icon" variant="ghost" aria-label={`Remove ${m.email}`} onClick={() => remove.mutate(m.user_id)}>
-                    <Trash2 />
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-          {isAdmin && (
-            <form
-              className="flex flex-wrap gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                add.mutate();
-              }}
-            >
-              <Input aria-label="Member email" className="min-w-48 flex-1" type="email" required placeholder="Email of a registered user" value={invite.email} onChange={(e) => setInvite((x) => ({ ...x, email: e.target.value }))} />
-              <Select aria-label="Role" className="w-28" value={invite.role} onChange={(e) => setInvite((x) => ({ ...x, role: e.target.value }))}>
-                <option value="admin">Admin</option>
-                <option value="member">Member</option>
-                <option value="viewer">Viewer</option>
-              </Select>
-              <Button type="submit" loading={add.isPending}>
-                <UserPlus /> Add
-              </Button>
-            </form>
-          )}
-          <div className="mt-2 flex gap-2 border-t pt-3">
-            <Input aria-label="New household name" placeholder="New household name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <Button variant="outline" disabled={!newName} loading={create.isPending} onClick={() => create.mutate()}>
-              Create household
-            </Button>
+          <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+            <div>
+              <p className="text-sm font-medium">AI-assisted suggestions</p>
+              <p className="text-xs text-muted-foreground">Off by default. When on (and set up by the server administrator), bill text may be sent to an AI provider for suggestions only. Matching and totals never depend on AI.</p>
+            </div>
+            <Switch checked={!!detail.data?.ai_opt_in} disabled={!isAdmin} onCheckedChange={(v) => patch.mutate({ ai_opt_in: v })} aria-label="AI-assisted suggestions" />
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid content-start gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Sharing</CardTitle>
+            <CardDescription>
+              {solo
+                ? "Only you can see this workspace. Share it if someone else should see or add expenses, such as a partner, a family member or your accountant."
+                : "People who can open this workspace."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <ul className="divide-y text-sm">
+              {people.map((m) => (
+                <li key={m.user_id} className="flex flex-wrap items-center gap-3 py-2">
+                  <Avatar name={m.full_name || m.email} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">
+                      {m.full_name} {m.user_id === me?.user.id && <span className="font-normal text-muted-foreground">(you)</span>}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">{m.email}</p>
+                  </div>
+                  {isAdmin && !solo ? (
+                    <Select aria-label={`Access for ${m.email}`} className="w-28" value={m.role} onChange={(e) => role.mutate({ uid: m.user_id, r: e.target.value })}>
+                      {["owner", "admin", "member", "viewer"].map((r) => (
+                        <option key={r} value={r}>
+                          {label(r)}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Badge>{label(m.role)}</Badge>
+                  )}
+                  {!solo && (isAdmin || m.user_id === me?.user.id) && (
+                    <Button size="icon" variant="ghost" aria-label={m.user_id === me?.user.id ? "Leave this workspace" : `Remove ${m.email}`} onClick={() => remove.mutate(m.user_id)}>
+                      <Trash2 />
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {isAdmin && (
+              <form
+                className="grid gap-2 border-t pt-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  add.mutate();
+                }}
+              >
+                <p className="text-sm font-medium">Give someone access</p>
+                <div className="flex flex-wrap gap-2">
+                  <Input aria-label="Their email" className="min-w-48 flex-1" type="email" required placeholder="Their SmartSpend email" value={invite.email} onChange={(e) => setInvite((x) => ({ ...x, email: e.target.value }))} />
+                  <Select aria-label="Access level" className="w-28" value={invite.role} onChange={(e) => setInvite((x) => ({ ...x, role: e.target.value }))}>
+                    <option value="admin">Admin</option>
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                  </Select>
+                  <Button type="submit" loading={add.isPending}>
+                    <UserPlus /> Share
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  They need a SmartSpend account first. {label(invite.role)}: {ROLE_HELP[invite.role].toLowerCase()}.
+                </p>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Your workspaces</CardTitle>
+            <CardDescription>Most people need just one. Add another to keep, say, business expenses completely separate.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <ul className="grid gap-2">
+              {(me?.households ?? []).map((h) => (
+                <li key={h.id} className={cn("flex items-center gap-3 rounded-md border p-2.5 text-sm", h.id === household?.id && "border-primary/50 bg-accent/40")}>
+                  <Avatar name={h.name} square />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{h.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {label(h.role)} · {h.base_currency}
+                    </p>
+                  </div>
+                  {h.id === household?.id ? (
+                    <Badge tone="success">Current</Badge>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => switchHousehold(h.id)}>
+                      Switch
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {creating ? (
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  create.mutate();
+                }}
+              >
+                <Input autoFocus aria-label="New workspace name" placeholder="e.g. Business, Family" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                <Button type="submit" disabled={!newName.trim()} loading={create.isPending}>
+                  Create
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setCreating(false)}>
+                  Cancel
+                </Button>
+              </form>
+            ) : (
+              <Button variant="outline" className="w-fit" onClick={() => setCreating(true)}>
+                <Plus /> New workspace
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -355,7 +443,7 @@ function Privacy() {
     mutationFn: () => api("/me", { method: "DELETE", body: { password: pw, confirm: confirmText } }),
     onSuccess: () => {
       session.setToken(null);
-      toast.success("Your account and personal households were deleted.");
+      toast.success("Your account and your unshared workspaces were deleted.");
       nav("/login");
       window.location.reload();
     },
@@ -366,7 +454,7 @@ function Privacy() {
       <Card>
         <CardHeader>
           <CardTitle>Export your data</CardTitle>
-          <CardDescription>A ZIP with every record of this household as JSON plus the original uploaded documents.</CardDescription>
+          <CardDescription>A ZIP with every record in this workspace as JSON, plus the original uploaded documents.</CardDescription>
         </CardHeader>
         <CardContent>
           <Button
@@ -386,13 +474,13 @@ function Privacy() {
           >
             <Download /> Download export
           </Button>
-          {!isAdmin && <p className="mt-2 text-xs text-muted-foreground">Only owners and admins can export household data.</p>}
+          {!isAdmin && <p className="mt-2 text-xs text-muted-foreground">Only owners and admins can export a workspace's data.</p>}
         </CardContent>
       </Card>
       <Card className="border-destructive/40">
         <CardHeader>
           <CardTitle>Delete account</CardTitle>
-          <CardDescription>Deletes your login and every household where you are the only member, including uploaded files. This can't be undone.</CardDescription>
+          <CardDescription>Deletes your login and every workspace only you use, including uploaded files. Workspaces shared with others stay with them. This can't be undone.</CardDescription>
         </CardHeader>
         <CardContent>
           <Button variant="destructive" onClick={() => setDel(true)}>
@@ -408,7 +496,7 @@ function Privacy() {
         <CardContent className="grid gap-1 text-sm text-muted-foreground">
           <p>• Documents are stored privately and only reachable through short-lived signed links.</p>
           <p>• PINs, banking passwords and card security codes are never requested or stored.</p>
-          <p>• Documents are never sent to third-party AI services unless an administrator configures it and your household opts in.</p>
+          <p>• Documents are never sent to third-party AI services unless an administrator configures it and the workspace turns on AI suggestions.</p>
           <p>
             • See the <Link className="text-primary underline" to="/reconciliation">reconciliation audit history</Link> for every link, merge and unlink decision.
           </p>
@@ -435,18 +523,18 @@ function Privacy() {
 
 export function SettingsPage() {
   const { me } = useAuth();
-  const [tab, setTab] = React.useState<"security" | "household" | "privacy">("household");
+  const [tab, setTab] = React.useState<"security" | "workspace" | "privacy">("workspace");
   return (
     <>
       <PageHeader title="Settings" description={me ? `${me.user.full_name} · ${me.user.email}` : undefined} />
       <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1 w-fit" role="tablist">
-        {(["household", "security", "privacy"] as const).map((t) => (
+        {(["workspace", "security", "privacy"] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn("rounded-md px-3 py-1 text-sm font-medium cursor-pointer", tab === t ? "bg-card shadow-sm" : "text-muted-foreground")}>
             {label(t === "privacy" ? "Data & privacy" : t)}
           </button>
         ))}
       </div>
-      {tab === "household" && <HouseholdSettings />}
+      {tab === "workspace" && <WorkspaceSettings />}
       {tab === "security" && <Security />}
       {tab === "privacy" && <Privacy />}
     </>

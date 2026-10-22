@@ -77,16 +77,16 @@ export function Badge({ tone = "default", className, ...p }: React.HTMLAttribute
 }
 
 export function Skeleton({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("animate-pulse rounded-md bg-muted", className)} {...p} />;
+  return <div aria-hidden className={cn("shimmer rounded-md", className)} {...p} />;
 }
 
 export function Switch(p: React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root>) {
   return (
     <SwitchPrimitive.Root
-      className="peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent bg-input transition-colors data-[state=checked]:bg-primary"
+      className="peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent bg-input transition-colors duration-200 data-[state=checked]:bg-primary"
       {...p}
     >
-      <SwitchPrimitive.Thumb className="pointer-events-none block h-4 w-4 rounded-full bg-card shadow transition-transform data-[state=checked]:translate-x-4" />
+      <SwitchPrimitive.Thumb className="pointer-events-none block h-4 w-4 rounded-full bg-card shadow transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] data-[state=checked]:translate-x-4" />
     </SwitchPrimitive.Root>
   );
 }
@@ -95,7 +95,7 @@ export function Progress({ value, tone = "primary", className }: { value: number
   const color = tone === "danger" ? "bg-destructive" : tone === "warning" ? "bg-warning" : "bg-primary";
   return (
     <ProgressPrimitive.Root className={cn("relative h-2 w-full overflow-hidden rounded-full bg-muted", className)} value={Math.min(100, value)}>
-      <ProgressPrimitive.Indicator className={cn("h-full transition-all", color)} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      <ProgressPrimitive.Indicator className={cn("animate-grow h-full rounded-full transition-[width] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]", color)} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
     </ProgressPrimitive.Root>
   );
 }
@@ -107,12 +107,14 @@ export function TabsList({ className, ...p }: React.ComponentPropsWithoutRef<typ
 export function TabsTrigger({ className, ...p }: React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>) {
   return (
     <TabsPrimitive.Trigger
-      className={cn("inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm cursor-pointer", className)}
+      className={cn("inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap transition-[color,background-color,box-shadow] duration-200 hover:text-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm cursor-pointer", className)}
       {...p}
     />
   );
 }
-export const TabsContent = TabsPrimitive.Content;
+export function TabsContent({ className, ...p }: React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>) {
+  return <TabsPrimitive.Content className={cn("animate-page", className)} {...p} />;
+}
 
 export function Table({ className, ...p }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
@@ -123,13 +125,13 @@ export function Table({ className, ...p }: React.TableHTMLAttributes<HTMLTableEl
 }
 export const THead = (p: React.HTMLAttributes<HTMLTableSectionElement>) => <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground" {...p} />;
 export const TBody = (p: React.HTMLAttributes<HTMLTableSectionElement>) => <tbody className="divide-y" {...p} />;
-export const TR = ({ className, ...p }: React.HTMLAttributes<HTMLTableRowElement>) => <tr className={cn("hover:bg-muted/50", className)} {...p} />;
+export const TR = ({ className, ...p }: React.HTMLAttributes<HTMLTableRowElement>) => <tr className={cn("transition-colors hover:bg-muted/50", className)} {...p} />;
 export const TH = ({ className, ...p }: React.ThHTMLAttributes<HTMLTableCellElement>) => <th className={cn("h-9 px-3 font-medium", className)} {...p} />;
 export const TD = ({ className, ...p }: React.TdHTMLAttributes<HTMLTableCellElement>) => <td className={cn("px-3 py-2.5 align-middle", className)} {...p} />;
 
 export function EmptyState({ title, description, action, icon }: { title: string; description?: string; action?: React.ReactNode; icon?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-10 text-center">
+    <div className="animate-page flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-6 text-center sm:p-10">
       <div className="text-muted-foreground">{icon ?? <Inbox className="size-8" aria-hidden />}</div>
       <p className="font-medium">{title}</p>
       {description && <p className="max-w-md text-sm text-muted-foreground">{description}</p>}
@@ -158,9 +160,9 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+    <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
@@ -170,9 +172,9 @@ export function PageHeader({ title, description, actions }: { title: string; des
 
 export function Stat({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "positive" | "negative" }) {
   return (
-    <Card className="p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={cn("mt-1 text-xl font-semibold tabular", tone === "positive" && "text-success", tone === "negative" && "text-destructive")}>{value}</p>
+    <Card className="lift p-3 sm:p-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</p>
+      <p className={cn("mt-1 truncate text-lg font-semibold tabular sm:text-xl", tone === "positive" && "text-success", tone === "negative" && "text-destructive")}>{value}</p>
       {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
     </Card>
   );

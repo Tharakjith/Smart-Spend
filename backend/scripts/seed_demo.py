@@ -34,7 +34,7 @@ def main() -> None:
             return
 
     c = TestClient(app)
-    r = c.post("/api/v1/auth/register", json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD, "full_name": "Demo User", "household_name": "Demo Household (sample data)"})
+    r = c.post("/api/v1/auth/register", json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD, "full_name": "Demo User", "household_name": "Demo Workspace (sample data)"})
     r.raise_for_status()
     with SessionLocal() as db:
         u = db.scalars(select(User).where(User.email == DEMO_EMAIL)).one()

@@ -53,6 +53,10 @@ flowchart LR
 
 ## 2. Entity-relationship diagram
 
+> **Naming:** the interface calls a household a **workspace**, because most people use SmartSpend on their own.
+> The code, database (`households`, `household_members`) and API (`/households`, `X-Household-ID`) keep the
+> original name, so integrations don't break.
+
 ```mermaid
 erDiagram
   USERS ||--o{ HOUSEHOLD_MEMBERS : joins
@@ -294,7 +298,7 @@ List endpoints accept `page` and `page_size` (≤ 200) and return
 
 | Area | Endpoints |
 |---|---|
-| Auth | `POST /auth/register`, `/auth/login`, `/auth/mfa/verify`, `/auth/refresh`, `/auth/logout`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/forgot-password`, `/auth/reset-password`; `GET /auth/sessions`, `DELETE /auth/sessions/{id}`; `POST /auth/mfa/setup`, `/auth/mfa/enable`, `/auth/mfa/disable` |
+| Auth | `POST /auth/register`, `/auth/login`, `/auth/mfa/verify`, `/auth/refresh`, `/auth/logout`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/forgot-password`, `/auth/reset-password` (link token, or email + 6-digit code: 15 min, 5 attempts, newest code only); `GET /auth/dev-mailbox` (development without SMTP only); `GET /auth/sessions`, `DELETE /auth/sessions/{id}`; `POST /auth/mfa/setup`, `/auth/mfa/enable`, `/auth/mfa/disable` |
 | Me / privacy | `GET/PATCH /me`, `GET /me/export`, `DELETE /me` |
 | Households | `GET/POST /households`, `GET/PATCH /households/{id}`, `GET/POST /households/{id}/members`, `PATCH/DELETE /households/{id}/members/{user_id}` |
 | Accounts | CRUD `/accounts`, `GET /accounts/{id}/balance` |

@@ -29,7 +29,7 @@ function BudgetDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="New budget" description="Leave the category empty for an overall budget. Spending is net of refunds, from the reconciled ledger.">
+      <DialogContent title="New budget" description="Leave the category empty for an overall budget. Spending is net of refunds, and a bill with its payment counts once.">
         <form
           className="grid gap-3"
           onSubmit={(e) => {

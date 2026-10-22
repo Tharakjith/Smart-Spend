@@ -53,7 +53,7 @@ def _out(h: Household, role: str | None = None) -> dict:
 def _membership(db, household_id: uuid.UUID, user_id: uuid.UUID) -> HouseholdMember:
     m = db.scalars(select(HouseholdMember).where(HouseholdMember.household_id == household_id, HouseholdMember.user_id == user_id)).first()
     if m is None:
-        raise Forbidden("You do not have access to this household", code="household_forbidden")
+        raise Forbidden("You do not have access to this workspace", code="household_forbidden")
     return m
 
 
@@ -86,7 +86,7 @@ def get_one(household_id: uuid.UUID, auth: AuthUser = Depends(get_auth_user), db
 def update(household_id: uuid.UUID, body: HouseholdPatch, ctx: Ctx = Depends(get_ctx)):
     if ctx.household_id != household_id:
         _membership(ctx.db, household_id, ctx.user.id)
-        raise Forbidden("Select this household (X-Household-ID) to modify it")
+        raise Forbidden("Switch to this workspace before changing it")
     ctx.require("admin")
     h = ctx.household
     before = snapshot(h, ["name", "timezone", "ai_opt_in", "matching_config"])
@@ -112,7 +112,7 @@ def members(household_id: uuid.UUID, auth: AuthUser = Depends(get_auth_user), db
 @router.post("/{household_id}/members", status_code=201)
 def add_member(household_id: uuid.UUID, body: MemberIn, ctx: Ctx = Depends(get_ctx)):
     if ctx.household_id != household_id:
-        raise Forbidden("Select this household (X-Household-ID) to modify it")
+        raise Forbidden("Switch to this workspace before changing it")
     ctx.require("admin")
     user = ctx.db.scalars(select(User).where(func.lower(User.email) == body.email.lower())).first()
     if user is None:
@@ -129,7 +129,7 @@ def add_member(household_id: uuid.UUID, body: MemberIn, ctx: Ctx = Depends(get_c
 @router.patch("/{household_id}/members/{user_id}")
 def change_role(household_id: uuid.UUID, user_id: uuid.UUID, body: MemberPatch, ctx: Ctx = Depends(get_ctx)):
     if ctx.household_id != household_id:
-        raise Forbidden("Select this household (X-Household-ID) to modify it")
+        raise Forbidden("Switch to this workspace before changing it")
     ctx.require("admin")
     m = _membership(ctx.db, household_id, user_id)
     if (body.role == "owner" or m.role == "owner") and ctx.role != "owner":
@@ -146,7 +146,7 @@ def change_role(household_id: uuid.UUID, user_id: uuid.UUID, body: MemberPatch, 
 @router.delete("/{household_id}/members/{user_id}")
 def remove_member(household_id: uuid.UUID, user_id: uuid.UUID, ctx: Ctx = Depends(get_ctx)):
     if ctx.household_id != household_id:
-        raise Forbidden("Select this household (X-Household-ID) to modify it")
+        raise Forbidden("Switch to this workspace before changing it")
     if user_id != ctx.user.id:
         ctx.require("admin")
     m = _membership(ctx.db, household_id, user_id)
@@ -167,4 +167,4 @@ def _ensure_other_owner(ctx: Ctx, household_id, user_id) -> None:
         )
     )
     if not owners:
-        raise Conflict("A household must keep at least one owner", code="last_owner")
+        raise Conflict("A workspace must keep at least one owner. Make someone else an owner first.", code="last_owner")

@@ -66,7 +66,7 @@ function Overview() {
           )}
         </CardContent>
       </Card>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="stagger grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>Spending by category</CardTitle>

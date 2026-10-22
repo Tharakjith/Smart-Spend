@@ -6,12 +6,13 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { z } from "zod";
+import { AddTransactionDialog } from "@/components/add-transaction";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Dialog, DialogContent } from "@/components/ui/dialog";
 import { Badge, Card, EmptyState, ErrorState, Field, Input, PageHeader, Select, Skeleton, Table, TBody, TD, TH, THead, TR, Textarea } from "@/components/ui/primitives";
 import { api, ApiError, qs } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { cn, date, dateTime, IN_TYPES, label, money, PAYMENT_METHODS, today, TX_TYPES } from "@/lib/format";
+import { cn, currentMonth, date, dateTime, IN_TYPES, label, money, monthLabel, PAYMENT_METHODS, shiftMonth, today, TX_TYPES } from "@/lib/format";
 import { categoryOptions, type Page, type Transaction, useAccounts, useCategories, useCounterparties } from "@/lib/queries";
 
 export const RECON_TONE: Record<string, "default" | "success" | "warning" | "danger" | "info" | "primary"> = {
@@ -535,7 +536,7 @@ export function TransactionsPage() {
     <>
       <PageHeader
         title="Transactions"
-        description="The canonical ledger. Each row is one real-world event; linked receipts and payments appear as its evidence."
+        description="Every expense, income and transfer. A bill and its payment appear as one transaction, so nothing is counted twice."
         actions={
           canWrite && (
             <>
@@ -549,9 +550,19 @@ export function TransactionsPage() {
           )
         }
       />
-      <Card className="mb-4 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-6">
-        <Input aria-label="Search" placeholder="Search description or notes" defaultValue={filters.q} onKeyDown={(e) => e.key === "Enter" && setFilter("q", (e.target as HTMLInputElement).value)} onBlur={(e) => setFilter("q", e.target.value)} className="lg:col-span-2" />
-        <Input aria-label="Month" type="month" value={filters.month} onChange={(e) => setFilter("month", e.target.value)} />
+      <Card className="mb-4 grid grid-cols-2 gap-2 p-3 sm:gap-3 sm:p-4 lg:grid-cols-6">
+        <Input aria-label="Search" placeholder="Search description or notes" defaultValue={filters.q} onKeyDown={(e) => e.key === "Enter" && setFilter("q", (e.target as HTMLInputElement).value)} onBlur={(e) => setFilter("q", e.target.value)} className="col-span-2" />
+        <Select aria-label="Month" value={filters.month} onChange={(e) => setFilter("month", e.target.value)}>
+          <option value="">All months</option>
+          {Array.from({ length: 24 }, (_, i) => shiftMonth(currentMonth(), -i))
+            // A month older than the list (e.g. from a shared link) still shows as selected.
+            .concat(filters.month && shiftMonth(currentMonth(), -23) > filters.month ? [filters.month] : [])
+            .map((m) => (
+              <option key={m} value={m}>
+                {monthLabel(m)}
+              </option>
+            ))}
+        </Select>
         <Select aria-label="Category" value={filters.category_id} onChange={(e) => setFilter("category_id", e.target.value)}>
           <option value="">All categories</option>
           {categoryOptions(cats.data).map((c) => (
@@ -569,14 +580,14 @@ export function TransactionsPage() {
           ))}
         </Select>
         <Select aria-label="Reconciliation status" value={filters.reconciliation_status} onChange={(e) => setFilter("reconciliation_status", e.target.value)}>
-          <option value="">Any reconciliation status</option>
+          <option value="">Any match status</option>
           {Object.keys(RECON_TONE).map((s) => (
             <option key={s} value={s}>
               {label(s)}
             </option>
           ))}
         </Select>
-        <details className="sm:col-span-2 lg:col-span-6">
+        <details className="col-span-2 lg:col-span-6">
           <summary className="cursor-pointer text-sm text-muted-foreground">More filters</summary>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <Input aria-label="From date" type="date" value={filters.date_from} onChange={(e) => setFilter("date_from", e.target.value)} />
@@ -683,7 +694,7 @@ export function TransactionsPage() {
           </Card>
         )
       )}
-      <TransactionDialog open={adding} onOpenChange={setAdding} />
+      <AddTransactionDialog open={adding} onOpenChange={setAdding} />
       <TransactionDetail id={openId} onClose={() => setFilter("open", "")} />
     </>
   );

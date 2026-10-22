@@ -81,6 +81,8 @@ def main() -> None:
     env = os.environ.copy()
     env.setdefault("ENVIRONMENT", "development")
     env.setdefault("REQUIRE_EMAIL_VERIFICATION", "false")
+    # Local only: the browser test suite signs up a dozen accounts a minute. Production keeps the strict default (10).
+    env.setdefault("RATE_LIMIT_AUTH_PER_MINUTE", "120")
     env.setdefault("PYTHONIOENCODING", "utf-8")
     if not env.get("DATABASE_URL"):
         from scripts.devdb import ensure

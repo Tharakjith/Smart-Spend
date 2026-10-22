@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -109,6 +109,19 @@ export function LoginPage() {
   );
 }
 
+const CURRENCIES = [
+  ["INR", "Indian rupee"],
+  ["USD", "US dollar"],
+  ["EUR", "Euro"],
+  ["GBP", "British pound"],
+  ["AED", "UAE dirham"],
+  ["SAR", "Saudi riyal"],
+  ["SGD", "Singapore dollar"],
+  ["AUD", "Australian dollar"],
+  ["CAD", "Canadian dollar"],
+  ["JPY", "Japanese yen"],
+] as const;
+
 const registerSchema = z
   .object({
     full_name: z.string().min(1, "Enter your name"),
@@ -150,7 +163,7 @@ export function RegisterPage() {
     }
   });
   return (
-    <Shell title="Create your account" description="A household is created for you; you can invite others later.">
+    <Shell title="Create your account" description="Track every expense once, with bills and payments matched automatically.">
       <form onSubmit={onSubmit} className="grid gap-4" noValidate>
         <Field label="Full name" htmlFor="full_name" error={errors.full_name?.message}>
           <Input id="full_name" autoComplete="name" {...form.register("full_name")} />
@@ -164,14 +177,23 @@ export function RegisterPage() {
         <Field label="Confirm password" htmlFor="confirm" error={errors.confirm?.message}>
           <Input id="confirm" type="password" autoComplete="new-password" {...form.register("confirm")} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Household name (optional)" htmlFor="household_name">
-            <Input id="household_name" {...form.register("household_name")} />
-          </Field>
-          <Field label="Currency" htmlFor="base_currency" error={errors.base_currency?.message}>
-            <Input id="base_currency" maxLength={3} {...form.register("base_currency", { setValueAs: (v: string) => v.toUpperCase() })} />
-          </Field>
-        </div>
+        <Field label="Currency" htmlFor="base_currency" error={errors.base_currency?.message}>
+          <Select id="base_currency" {...form.register("base_currency")}>
+            {CURRENCIES.map(([code, name]) => (
+              <option key={code} value={code}>
+                {code} · {name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <details className="group rounded-md border px-3 py-2 text-sm">
+          <summary className="cursor-pointer select-none text-muted-foreground">Name your workspace (optional)</summary>
+          <div className="mt-3 pb-1">
+            <Field label="Workspace name" htmlFor="household_name" hint="Defaults to your first name, e.g. “Asha's Workspace”. You can rename it or share it with family later.">
+              <Input id="household_name" placeholder="e.g. Personal, Family, Business" {...form.register("household_name")} />
+            </Field>
+          </div>
+        </details>
         <Button type="submit" loading={busy}>
           Create account
         </Button>
@@ -186,42 +208,133 @@ export function RegisterPage() {
   );
 }
 
+type Delivery = "email" | "dev_mailbox" | "not_configured";
+type DevMail = { subject: string; body: string };
+
 export function ForgotPasswordPage() {
+  const nav = useNavigate();
   const [email, setEmail] = React.useState("");
-  const [sent, setSent] = React.useState(false);
+  const [delivery, setDelivery] = React.useState<Delivery | null>(null);
+  const [devMail, setDevMail] = React.useState<DevMail | null>(null);
+  const [code, setCode] = React.useState("");
+  const [pw, setPw] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+
+  const send = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setBusy(true);
     try {
-      await api("/auth/forgot-password", { body: { email } });
-      setSent(true);
+      const r = await api<{ ok: boolean; delivery: Delivery }>("/auth/forgot-password", { body: { email } });
+      setDelivery(r.delivery);
+      setCode("");
+      setDevMail(null);
+      if (r.delivery === "dev_mailbox") {
+        // Local development without SMTP: show the email the server would have sent.
+        const box = await api<{ items: DevMail[] }>(`/auth/dev-mailbox?email=${encodeURIComponent(email)}`);
+        setDevMail(box.items[0] ?? null);
+      } else if (e === undefined) {
+        toast.success("A new code is on its way.");
+      }
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Request failed");
     } finally {
       setBusy(false);
     }
   };
-  return (
-    <Shell title="Reset your password" description="We'll email a reset link if the address is registered.">
-      {sent ? (
-        <p className="text-sm">If an account exists for {email}, a reset link is on its way. It expires in one hour.</p>
-      ) : (
-        <form onSubmit={submit} className="grid gap-4">
+
+  const reset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api("/auth/reset-password", { body: { email, code, new_password: pw } });
+      toast.success("Password updated. All sessions were signed out.");
+      nav("/login");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Reset failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (delivery === null) {
+    return (
+      <Shell title="Reset your password" description="We'll email a 6-digit code if the address is registered.">
+        <form onSubmit={send} className="grid gap-4">
           <Field label="Email" htmlFor="email">
-            <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
           <Button type="submit" loading={busy}>
-            Send reset link
+            Send code
           </Button>
         </form>
+        <BackToSignIn />
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell title="Enter your code" description={`If an account exists for ${email}, we sent it a 6-digit code. It expires in 15 minutes.`}>
+      {delivery === "dev_mailbox" && (
+        <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <p className="font-medium">Email sending isn't set up on this server</p>
+          <p className="mt-1 text-muted-foreground">
+            Development mode shows the message here instead. Configure SMTP (see docs/SETUP.md) to deliver real emails.
+          </p>
+          {devMail ? (
+            <p className="mt-2">
+              Your code: <span className="font-mono text-base font-semibold tracking-widest">{devMail.subject.split(" ")[0]}</span>
+            </p>
+          ) : (
+            <p className="mt-2 text-muted-foreground">No account is registered with that address.</p>
+          )}
+        </div>
       )}
-      <p className="mt-4 text-center text-sm">
-        <Link to="/login" className="text-primary hover:underline">
-          Back to sign in
-        </Link>
-      </p>
+      {delivery === "not_configured" && (
+        <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+          This server can't send email yet, so no code was delivered. Ask the administrator to configure SMTP.
+        </p>
+      )}
+      <form onSubmit={reset} className="grid gap-4">
+        <Field label="6-digit code" htmlFor="code">
+          <Input
+            id="code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="\d{6}"
+            maxLength={6}
+            required
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            className="font-mono tracking-widest"
+          />
+        </Field>
+        <Field label="New password" htmlFor="pw" hint="10+ characters with upper- and lower-case letters and a digit.">
+          <Input id="pw" type="password" autoComplete="new-password" required value={pw} onChange={(e) => setPw(e.target.value)} />
+        </Field>
+        <Button type="submit" loading={busy}>
+          Update password
+        </Button>
+      </form>
+      <div className="mt-4 flex items-center justify-between text-sm">
+        <button type="button" className="text-primary hover:underline disabled:opacity-50" disabled={busy} onClick={() => send()}>
+          Resend code
+        </button>
+        <button type="button" className="text-muted-foreground hover:underline" onClick={() => setDelivery(null)}>
+          Use a different email
+        </button>
+      </div>
+      <BackToSignIn />
     </Shell>
+  );
+}
+
+function BackToSignIn() {
+  return (
+    <p className="mt-4 text-center text-sm">
+      <Link to="/login" className="text-primary hover:underline">
+        Back to sign in
+      </Link>
+    </p>
   );
 }
 

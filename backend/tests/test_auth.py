@@ -64,6 +64,53 @@ def test_password_reset_revokes_sessions(client):
     assert client.post("/api/v1/auth/login", json={"email": "reset@example.com", "password": "N3wPassword!!"}).status_code == 200
 
 
+
+def _reset_code(email):
+    mail = [m for m in OUTBOX if m["to"] == email][-1]
+    return mail["subject"].split()[0]
+
+
+def test_password_reset_with_emailed_code(client):
+    u = User(client, "code@example.com")
+    r = client.post("/api/v1/auth/forgot-password", json={"email": "code@example.com"})
+    assert r.json() == {"ok": True, "delivery": "not_configured"}  # test env: no SMTP, no dev mailbox
+    code = _reset_code("code@example.com")
+    assert len(code) == 6 and code.isdigit() and code in OUTBOX[-1]["body"]
+    wrong = "0" * 6 if code != "000000" else "111111"
+    r = client.post("/api/v1/auth/reset-password", json={"email": "code@example.com", "code": wrong, "new_password": "N3wPassword!!"})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "code_incorrect"
+    r = client.post("/api/v1/auth/reset-password", json={"email": "code@example.com", "code": code, "new_password": "N3wPassword!!"})
+    assert r.status_code == 200
+    assert u.get("/transactions").status_code == 401
+    assert client.post("/api/v1/auth/login", json={"email": "code@example.com", "password": "N3wPassword!!"}).status_code == 200
+    # single use: the code and the link from the same email are both spent
+    r = client.post("/api/v1/auth/reset-password", json={"email": "code@example.com", "code": code, "new_password": "An0therPass!!"})
+    assert r.status_code == 422
+    token = OUTBOX[-1]["body"].split("token=")[1].split()[0]
+    assert client.post("/api/v1/auth/reset-password", json={"token": token, "new_password": "An0therPass!!"}).status_code == 422
+
+
+def test_reset_code_attempt_limit_and_newest_only(client):
+    User(client, "guess@example.com")
+    client.post("/api/v1/auth/forgot-password", json={"email": "guess@example.com"})
+    first = _reset_code("guess@example.com")
+    client.post("/api/v1/auth/forgot-password", json={"email": "guess@example.com"})
+    code = _reset_code("guess@example.com")
+    if first != code:  # a newer email retires the older code
+        r = client.post("/api/v1/auth/reset-password", json={"email": "guess@example.com", "code": first, "new_password": "N3wPassword!!"})
+        assert r.status_code == 422
+    wrong = f"{(int(code) + 1) % 10**6:06d}"
+    for _ in range(5):
+        client.post("/api/v1/auth/reset-password", json={"email": "guess@example.com", "code": wrong, "new_password": "N3wPassword!!"})
+    # after five wrong guesses even the right code no longer works
+    r = client.post("/api/v1/auth/reset-password", json={"email": "guess@example.com", "code": code, "new_password": "N3wPassword!!"})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "code_invalid"
+    # unknown email and missing code give no hint about accounts
+    r = client.post("/api/v1/auth/reset-password", json={"email": "ghost@example.com", "code": "123456", "new_password": "N3wPassword!!"})
+    assert r.json()["error"]["code"] == "code_invalid"
+    assert client.post("/api/v1/auth/reset-password", json={"email": "guess@example.com", "new_password": "N3wPassword!!"}).status_code == 422
+    assert client.get("/api/v1/auth/dev-mailbox", params={"email": "guess@example.com"}).status_code == 404
+
 def test_mfa_flow(client):
     u = User(client, "mfa@example.com")
     setup = u.post("/auth/mfa/setup").json()
@@ -135,3 +182,13 @@ def test_data_export_zip(user):
     z = zipfile.ZipFile(io.BytesIO(r.content))
     assert "canonical_transactions.json" in z.namelist()
     assert b"100.0000" in z.read("canonical_transactions.json")
+
+
+def test_register_without_household_name_makes_user_owner_of_default_household(client):
+    for name, household, expected in (("Tharak Pradeep", None, "Tharak's Workspace"), ("   ", "  ", "My Workspace"), ("Asha", "Menon Family", "Menon Family")):
+        email = f"hh{abs(hash(expected))}@example.com"
+        r = client.post("/api/v1/auth/register", json={"email": email, "password": "Str0ngPassw0rd!", "full_name": name, "household_name": household})
+        assert r.status_code == 201, r.text
+        token = client.post("/api/v1/auth/login", json={"email": email, "password": "Str0ngPassw0rd!"}).json()["access_token"]
+        me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}).json()
+        assert [(h["name"], h["role"]) for h in me["households"]] == [(expected, "owner")]

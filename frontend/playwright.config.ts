@@ -10,6 +10,8 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:5173",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    // Screenshot runs freeze chart animations so images show final values.
+    contextOptions: { reducedMotion: process.env.E2E_SCREENSHOTS ? "reduce" : "no-preference" },
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1400, height: 900 } }, grepInvert: /@mobile/ },

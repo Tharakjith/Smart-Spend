@@ -404,7 +404,7 @@ def validate(fields: dict, items: list[dict]) -> list[dict]:
     if not v("merchant_name"):
         issues.append({"level": "warning", "code": "merchant_missing", "message": "Merchant name was not found."})
     if not v("currency"):
-        issues.append({"level": "info", "code": "currency_missing", "message": "No currency symbol found; the household currency will be used unless you change it."})
+        issues.append({"level": "info", "code": "currency_missing", "message": "No currency symbol found; the workspace currency will be used unless you change it."})
     if fields.get("payment_status", {}).get("value") == "not_completed":
         issues.append({"level": "error", "code": "payment_not_completed", "message": "The screenshot indicates a failed, pending or reversed payment - it should not be recorded as a completed expense."})
     for i, it in enumerate(items):

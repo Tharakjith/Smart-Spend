@@ -69,14 +69,14 @@ def get_ctx(
         try:
             hid = uuid.UUID(x_household_id)
         except ValueError:
-            raise Forbidden("Invalid household id")
+            raise Forbidden("Invalid workspace id")
         q = q.where(HouseholdMember.household_id == hid)
     else:
         q = q.order_by(HouseholdMember.created_at)
     member = db.scalars(q.limit(1)).first()
     if member is None:
         # Same response whether the household exists or not: no information leak.
-        raise Forbidden("You do not have access to this household", code="household_forbidden")
+        raise Forbidden("You do not have access to this workspace", code="household_forbidden")
     household = db.get(Household, member.household_id)
     ip = request.client.host if request.client else ""
     return Ctx(db=db, user=auth.user, household=household, role=member.role, session_id=auth.session_id, ip=ip)

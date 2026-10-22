@@ -20,6 +20,7 @@ async function register(page: Page) {
 
 async function addTransaction(page: Page, opts: { amount: string; merchant: string; recordAs: "payment" | "bill"; ref?: string }) {
   await page.getByRole("button", { name: "Add transaction" }).first().click();
+  await page.getByRole("button", { name: /Enter manually/ }).click();
   const dlg = page.getByRole("dialog");
   await dlg.getByLabel("Amount").fill(opts.amount);
   await dlg.getByLabel("Merchant / payee").fill(opts.merchant);
