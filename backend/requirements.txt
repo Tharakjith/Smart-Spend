@@ -1,0 +1,31 @@
+# Runtime dependencies (pinned; tested with Python 3.11)
+fastapi==0.115.14
+uvicorn[standard]==0.54.0
+SQLAlchemy==2.0.55
+alembic==1.20.0
+pydantic==2.14.1
+pydantic-settings==2.16.0
+email-validator==2.3.0
+psycopg[binary]==3.3.6
+python-multipart==0.0.32
+argon2-cffi==25.1.0
+PyJWT==2.15.1
+PyOTP==2.10.0
+cryptography==50.0.2
+celery==5.6.3
+redis==8.1.0
+boto3==1.43.114
+pymupdf==1.28.2
+pdfplumber==0.11.10
+pytesseract==0.3.13
+# Pip-installable OCR with bundled models (used when Tesseract isn't installed, e.g. on Windows)
+rapidocr_onnxruntime==1.4.4
+onnxruntime==1.31.0
+pillow==13.0.0
+openpyxl==3.1.5
+reportlab==5.0.1
+RapidFuzz==3.14.6
+python-dateutil==2.9.0.post0
+httpx==0.28.1
+# Optional AI provider (only used when AI_PROVIDER=anthropic)
+anthropic==1.15.0

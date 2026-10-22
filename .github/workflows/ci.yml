@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: smartspend
+          POSTGRES_PASSWORD: smartspend
+          POSTGRES_DB: smartspend_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U smartspend" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://smartspend:smartspend@localhost:5432/smartspend_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements.txt pytest==9.1.1
+      - name: Migrations apply cleanly and match the models
+        run: |
+          DATABASE_URL=$TEST_DATABASE_URL python -m alembic upgrade head
+          DATABASE_URL=$TEST_DATABASE_URL python - <<'PY'
+          from alembic.autogenerate import compare_metadata
+          from alembic.migration import MigrationContext
+          from sqlalchemy import create_engine
+          import app.models  # noqa
+          from app.core.db import Base
+          import os
+          with create_engine(os.environ["DATABASE_URL"]).connect() as c:
+              diff = compare_metadata(MigrationContext.configure(c), Base.metadata)
+          assert not diff, f"Models and migrations differ: {diff}"
+          PY
+          DATABASE_URL=$TEST_DATABASE_URL python -m alembic downgrade base
+      - name: Tests (unit, integration, API end-to-end) on PostgreSQL
+        run: python -m pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npx vitest run
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: smartspend
+          POSTGRES_PASSWORD: smartspend
+          POSTGRES_DB: smartspend
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U smartspend" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://smartspend:smartspend@localhost:5432/smartspend
+      REQUIRE_EMAIL_VERIFICATION: "false"
+      RATE_LIMIT_AUTH_PER_MINUTE: "1000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: backend/requirements*.txt }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: pip install -r backend/requirements.txt
+      - run: cd backend && python -m alembic upgrade head
+      - run: cd backend && (python -m uvicorn app.main:app --port 8000 > ../api.log 2>&1 &)
+      - run: cd frontend && npm ci && npx playwright install --with-deps chromium
+      - run: cd frontend && (npx vite --port 5173 --host 127.0.0.1 > ../web.log 2>&1 &) && npx --yes wait-on@8.0.3 http://127.0.0.1:5173 http://127.0.0.1:8000/api/health
+      - run: cd frontend && npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            frontend/test-results
+            api.log
+            web.log
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t smartspend-api ./backend
+      - run: docker build -t smartspend-web ./frontend
